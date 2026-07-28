@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Accordi & Ritmo — Rilevatore</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Metal+Mania&family=Rajdhani:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,600&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --radius: 14px;
+    --transition: .35s cubic-bezier(.4,0,.2,1);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    min-height:100vh;
+    color:var(--text);
+    background:var(--bg);
+    font-family:var(--font-body);
+    transition:background var(--transition), color var(--transition);
+    position:relative;
+    overflow-x:hidden;
+  }
+
+  /* ---------- THEME: ROCK ---------- */
+  body.theme-rock{
+    --bg:#0b0b0d;
+    --panel:#161314;
+    --panel2:#1d1517;
+    --panel-border:#3a1414;
+    --primary:#ff2d3b;
+    --accent:#ffb020;
+    --text:#f4efe9;
+    --muted:#a89a95;
+    --font-display:'Metal Mania', cursive;
+    --font-body:'Rajdhani', sans-serif;
+    --glow: 0 0 22px rgba(255,45,59,.45);
+    --bar-grad: linear-gradient(180deg,#ffcf5c,#ff2d3b);
+    --ok-tint: rgba(255,45,59,.14);
+    --warn-tint: rgba(255,176,32,.14);
+    --none-tint: rgba(255,255,255,.03);
+  }
+  body.theme-rock::before{
+    content:"";
+    position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      radial-gradient(circle at 15% 0%, rgba(255,45,59,.16), transparent 45%),
+      radial-gradient(circle at 90% 100%, rgba(255,176,32,.10), transparent 40%),
+      repeating-linear-gradient(115deg, rgba(255,255,255,.015) 0px, rgba(255,255,255,.015) 1px, transparent 1px, transparent 6px);
+  }
+
+  /* ---------- THEME: CLASSICA ---------- */
+  body.theme-classic{
+    --bg:#f5efdd;
+    --panel:#fffdf6;
+    --panel2:#fbf4e0;
+    --panel-border:#c8a24a;
+    --primary:#7a2530;
+    --accent:#a9781f;
+    --text:#2c2214;
+    --muted:#7d715a;
+    --font-display:'Cormorant Garamond', serif;
+    --font-body:'EB Garamond', serif;
+    --glow: 0 0 0 rgba(0,0,0,0);
+    --bar-grad: linear-gradient(180deg,#a9781f,#7a2530);
+    --ok-tint: rgba(122,37,48,.08);
+    --warn-tint: rgba(169,120,31,.10);
+    --none-tint: rgba(0,0,0,.02);
+  }
+  body.theme-classic::before{
+    content:"";
+    position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0px, transparent 92px,
+      rgba(44,34,20,.16) 92px, rgba(44,34,20,.16) 93px,
+      transparent 93px, transparent 97px,
+      rgba(44,34,20,.16) 97px, rgba(44,34,20,.16) 98px,
+      transparent 98px, transparent 102px,
+      rgba(44,34,20,.16) 102px, rgba(44,34,20,.16) 103px,
+      transparent 103px, transparent 107px,
+      rgba(44,34,20,.16) 107px, rgba(44,34,20,.16) 108px,
+      transparent 108px, transparent 200px
+    );
+    opacity:.55;
+  }
+
+  .app{ position:relative; z-index:1; max-width:900px; margin:0 auto; padding:18px 16px 140px; }
+
+  /* ---------- HEADER ---------- */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:12px; padding:6px 2px 18px;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand-icon{ font-size:1.6rem; filter:drop-shadow(var(--glow)); }
+  .brand h1{
+    font-family:var(--font-display);
+    font-weight:400;
+    font-size:1.7rem;
+    letter-spacing:.5px;
+    margin:0;
+    color:var(--primary);
+    text-shadow:var(--glow);
+  }
+  body.theme-classic .brand h1{ font-style:italic; letter-spacing:.5px; }
+
+  .theme-toggle{
+    display:flex; border:1px solid var(--panel-border); border-radius:999px;
+    overflow:hidden; background:var(--panel);
+  }
+  .toggle-seg{
+    border:none; background:transparent; color:var(--muted);
+    font-family:var(--font-body); font-weight:700; letter-spacing:1px;
+    font-size:.75rem; padding:9px 16px; cursor:pointer;
+    transition:background var(--transition), color var(--transition);
+  }
+  .toggle-seg.active{
+    background:var(--primary); color:#fff;
+  }
+  body.theme-classic .toggle-seg.active{ color:#fffaf0; }
+
+  /* ---------- PANELS ---------- */
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-radius:var(--radius);
+    padding:16px 18px;
+    margin-bottom:16px;
+    transition:background var(--transition), border-color var(--transition);
+  }
+  body.theme-rock .panel{ box-shadow: inset 0 0 0 1px rgba(255,255,255,.02); }
+  body.theme-classic .panel{ box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 6px 18px rgba(60,40,10,.06); }
+
+  .panel h2{
+    font-family:var(--font-body); font-size:.82rem; text-transform:uppercase;
+    letter-spacing:1.2px; color:var(--muted); margin:0 0 10px;
+  }
+  body.theme-classic .panel h2{ font-family:var(--font-display); font-size:1.05rem; text-transform:none; letter-spacing:.3px; font-style:italic; }
+
+  .status-line{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:.92rem; color:var(--muted); }
+  .dot{ width:9px; height:9px; border-radius:50%; background:#666; flex:none; }
+  .dot.on{ background:#3ddc73; box-shadow:0 0 8px #3ddc73; }
+  .dot.off{ background:#666; }
+  .dot.err{ background:var(--primary); box-shadow:0 0 8px var(--primary); }
+
+  .link-btn{
+    background:transparent; border:1px solid var(--panel-border); color:var(--text);
+    padding:6px 12px; border-radius:8px; font-family:var(--font-body); font-size:.8rem;
+    cursor:pointer; letter-spacing:.3px;
+  }
+  .link-btn:hover{ border-color:var(--primary); color:var(--primary); }
+
+  .warning-banner{
+    display:none; margin-top:10px; padding:10px 12px; border-radius:8px;
+    background:var(--warn-tint); border:1px solid var(--accent); color:var(--text); font-size:.85rem;
+  }
+
+  /* ---------- CONTROLS ---------- */
+  .controls-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:640px){ .controls-grid{ grid-template-columns:1fr; } }
+
+  .capture-btn{
+    width:100%; border:none; border-radius:12px; padding:18px 10px;
+    font-family:var(--font-body); font-weight:700; font-size:1rem; letter-spacing:.5px;
+    cursor:pointer; color:#fff; user-select:none; touch-action:none;
+    transition:transform .12s ease, box-shadow var(--transition), filter var(--transition);
+    background:var(--bar-grad);
+  }
+  .capture-btn:active{ transform:scale(.97); }
+  .capture-btn.recording{ filter:brightness(1.25); box-shadow:0 0 0 3px var(--accent); }
+  .capture-btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+  .dur-row{ display:flex; align-items:center; gap:10px; margin-bottom:12px; color:var(--muted); font-size:.9rem; }
+  .dur-row input[type=range]{ flex:1; accent-color:var(--primary); }
+  .dur-row #durVal{ color:var(--text); font-weight:700; min-width:26px; text-align:right; }
+
+  .progress{ height:6px; border-radius:4px; background:var(--panel2); overflow:hidden; margin-top:10px; }
+  .progress-fill{ height:100%; width:0%; background:var(--bar-grad); transition:width .05s linear; }
+
+  /* ---------- VISUALIZER ---------- */
+  #waveCanvas{ width:100%; height:80px; display:block; border-radius:8px; background:var(--panel2); }
+  .chroma-bars{
+    display:flex; gap:4px; align-items:flex-end; height:110px; margin-top:14px;
+    padding:8px; background:var(--panel2); border-radius:8px;
+  }
+  .chroma-bar{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:4px; }
+  .chroma-bar .fill{ width:100%; max-width:22px; height:2%; border-radius:3px 3px 0 0; background:var(--bar-grad); transition:height .06s linear; }
+  .chroma-bar .lbl{ font-size:.68rem; color:var(--muted); font-family:var(--font-body); }
+
+  .rec-indicator{ margin-top:10px; text-align:center; font-size:.85rem; color:var(--muted); letter-spacing:.4px; }
+
+  /* ---------- RESULT (fixed bottom) ---------- */
+  .result-panel{
+    position:fixed; left:0; right:0; bottom:0; z-index:5;
+    display:flex; gap:18px; align-items:center; justify-content:space-between;
+    padding:16px 22px; background:var(--panel); border-top:1px solid var(--panel-border);
+    box-shadow:0 -10px 30px rgba(0,0,0,.25);
+    transition:background var(--transition);
+  }
+  .result-panel.result-ok{ background:var(--ok-tint); }
+  .result-panel.result-warn{ background:var(--warn-tint); }
+  .result-panel.result-none{ background:var(--none-tint); }
+
+  .result-main{ min-width:0; }
+  .result-label{ font-size:.72rem; letter-spacing:1.4px; text-transform:uppercase; color:var(--muted); margin-bottom:2px; }
+  .result-chord{
+    font-family:var(--font-display); font-size:2.1rem; line-height:1.1; color:var(--primary);
+    text-shadow:var(--glow); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  body.theme-classic .result-chord{ font-style:italic; }
+  .result-confidence{ font-size:.78rem; color:var(--muted); margin-top:2px; }
+
+  .result-tempo{ text-align:right; flex:none; }
+  .tempo-value{ font-family:var(--font-body); font-weight:700; font-size:1.5rem; color:var(--accent); }
+  .tempo-sub{ font-size:.72rem; color:var(--muted); letter-spacing:.6px; }
+
+  @media (max-width:520px){
+    .result-chord{ font-size:1.5rem; }
+    .tempo-value{ font-size:1.15rem; }
+    .result-panel{ padding:12px 14px; }
+  }
+
+  footer.tips{ text-align:center; color:var(--muted); font-size:.78rem; margin-top:6px; }
+</style>
+</head>
+<body class="theme-rock">
+<div class="app">
+
+  <div class="topbar">
+    <div class="brand"><span class="brand-icon">🎸</span><h1>Accordi &amp; Ritmo</h1></div>
+    <div class="theme-toggle" role="group" aria-label="Stile grafico">
+      <button class="toggle-seg active" id="btnRock" data-theme="rock">ROCK</button>
+      <button class="toggle-seg" id="btnClassic" data-theme="classic">CLASSICA</button>
+    </div>
+  </div>
+
+  <section class="panel">
+    <div class="status-line">
+      <span class="dot off" id="micDot"></span>
+      <span id="micStatus">Microfono non attivo — premi un pulsante di ascolto per attivarlo.</span>
+      <button class="link-btn" id="calibrateBtn" style="margin-left:auto;">🔧 Calibra rumore di fondo</button>
+    </div>
+    <div class="warning-banner" id="secureWarning">
+      Il microfono richiede una pagina servita in HTTPS o aperta da <code>localhost</code>. Se non funziona da file locale, avvia un server (es. <code>python -m http.server</code>) e apri <code>http://localhost:PORT/</code>.
+    </div>
+    <div class="status-line" id="diagLine" style="margin-top:8px; font-size:.76rem; opacity:.75;"></div>
+  </section>
+
+  <section class="panel">
+    <div class="controls-grid">
+      <div class="mode">
+        <h2>Modalità 1 · Tieni premuto</h2>
+        <button class="capture-btn" id="holdBtn">🎤 TIENI PREMUTO PER ASCOLTARE</button>
+      </div>
+      <div class="mode">
+        <h2>Modalità 2 · Durata fissa</h2>
+        <div class="dur-row">
+          <span>Durata:</span>
+          <input type="range" id="durSlider" min="1" max="6" value="3" step="1">
+          <span id="durVal">3</span><span>s</span>
+        </div>
+        <button class="capture-btn" id="startBtn">▶ AVVIA ASCOLTO</button>
+        <div class="progress"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Analisi in tempo reale</h2>
+    <canvas id="waveCanvas"></canvas>
+    <div class="chroma-bars" id="chromaBars"></div>
+    <div class="rec-indicator" id="recIndicator">In attesa…</div>
+  </section>
+
+  <footer class="tips">Suggerimento: suona l'accordo in modo netto e vicino al microfono; l'ambiente circostante può disturbare il rilevamento.</footer>
+</div>
+
+<div class="result-panel result-none" id="resultPanel">
+  <div class="result-main">
+    <div class="result-label" id="resultLabel">Pronto ad ascoltare</div>
+    <div class="result-chord" id="resultChord">—</div>
+    <div class="result-confidence" id="resultConfidence"></div>
+  </div>
+  <div class="result-tempo">
+    <div class="tempo-value" id="tempoValue">—</div>
+    <div class="tempo-sub">metro / tempo</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ================= CONFIG =================
+  const NOTE_NAMES = ['Do','Do♯','Re','Re♯','Mi','Fa','Fa♯','Sol','Sol♯','La','La♯','Si'];
+  const QUALITIES = [
+    { name:'Maggiore',  intervals:[0,4,7]   },
+    { name:'Minore',    intervals:[0,3,7]   },
+    { name:'Diminuito', intervals:[0,3,6]   },
+    { name:'Aumentato', intervals:[0,4,8]   },
+    { name:'Quinta (power chord)', intervals:[0,7] }
+  ];
+  const FFT_SIZE = 8192;
+  const MIN_FREQ = 55;    // ~ A1
+  const MAX_FREQ = 5000;
+  const CAPTURE_HOP_MS = 40;      // ~25 fps sampling while capturing
+  const MAX_HOLD_MS = 4000;       // safety cap for "tieni premuto"
+  const STRONG_MATCH = 0.72;
+  const WEAK_MATCH = 0.50;
+  const ACTIVE_NOTE_REL_THRESHOLD = 0.35;
+  const FLATNESS_NOISE_THRESHOLD = 0.55;
+  let noiseFloorRMS = 0.012; // default, refined by calibration
+
+  // ================= STATE =================
+  let audioCtx=null, analyser=null, sourceNode=null, mediaStream=null;
+  let freqData=null, timeData=null, sampleRate=44100, binHz=0;
+  let capturing=false, captureData=[], captureInterval=null, holdSafetyTimer=null;
+  let idleRafId=null, lastIdleDraw=0;
+
+  // ================= DOM =================
+  const el = (id)=>document.getElementById(id);
+  const micDot=el('micDot'), micStatus=el('micStatus');
+  const secureWarning=el('secureWarning');
+  const holdBtn=el('holdBtn'), startBtn=el('startBtn');
+  const durSlider=el('durSlider'), durVal=el('durVal'), progressFill=el('progressFill');
+  const waveCanvas=el('waveCanvas'), waveCtx=waveCanvas.getContext('2d');
+  const chromaBarsEl=el('chromaBars');
+  const recIndicator=el('recIndicator');
+  const resultPanel=el('resultPanel'), resultLabel=el('resultLabel'), resultChord=el('resultChord'),
+        resultConfidence=el('resultConfidence'), tempoValue=el('tempoValue');
+  const calibrateBtn=el('calibrateBtn');
+  const btnRock=el('btnRock'), btnClassic=el('btnClassic');
+
+  if(!window.isSecureContext){ secureWarning.style.display='block'; }
+  {
+    const hasGUM = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    el('diagLine').textContent =
+      'Diagnostica: protocollo='+location.protocol+' · secureContext='+window.isSecureContext+' · getUserMedia disponibile='+hasGUM;
+    if(!hasGUM){ secureWarning.style.display='block'; }
+  }
+
+  // build chroma bar elements
+  const barFillEls = NOTE_NAMES.map((name)=>{
+    const wrap=document.createElement('div'); wrap.className='chroma-bar';
+    const fill=document.createElement('div'); fill.className='fill';
+    const lbl=document.createElement('div'); lbl.className='lbl'; lbl.textContent=name;
+    wrap.appendChild(fill); wrap.appendChild(lbl);
+    chromaBarsEl.appendChild(wrap);
+    return fill;
+  });
+
+  function resizeCanvas(){
+    const rect=waveCanvas.getBoundingClientRect();
+    waveCanvas.width=Math.max(1,Math.floor(rect.width*devicePixelRatio));
+    waveCanvas.height=Math.max(1,Math.floor(80*devicePixelRatio));
+  }
+  window.addEventListener('resize', resizeCanvas);
+
+  // ================= THEME TOGGLE =================
+  function setTheme(name){
+    document.body.className = name==='rock' ? 'theme-rock' : 'theme-classic';
+    btnRock.classList.toggle('active', name==='rock');
+    btnClassic.classList.toggle('active', name==='classic');
+  }
+  btnRock.addEventListener('click', ()=>setTheme('rock'));
+  btnClassic.addEventListener('click', ()=>setTheme('classic'));
+
+  // ================= AUDIO SETUP =================
+  async function ensureAudio(){
+    if(audioCtx) { if(audioCtx.state==='suspended') await audioCtx.resume(); return; }
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      micDot.className='dot err';
+      micStatus.textContent='API microfono non disponibile in questo contesto (protocollo: '+location.protocol+', secureContext: '+window.isSecureContext+'). Su Android probabile causa: pagina aperta da un\'app terza (WhatsApp/Telegram/Drive) con URI content://. Apri il file direttamente in Chrome (menu ⋮ → Apri in Chrome) o servilo via http(s)://.';
+      secureWarning.style.display='block';
+      throw new Error('getUserMedia non supportata in questo contesto');
+    }
+    try{
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false }
+      });
+    }catch(err){
+      micDot.className='dot err';
+      if(err && err.name==='NotAllowedError') micStatus.textContent='Permesso microfono negato. Abilitalo nelle impostazioni del browser e ricarica la pagina.';
+      else if(err && err.name==='NotFoundError') micStatus.textContent='Nessun microfono trovato sul dispositivo.';
+      else micStatus.textContent='Impossibile accedere al microfono: '+(err && err.message ? err.message : err);
+      throw err;
+    }
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    sourceNode = audioCtx.createMediaStreamSource(mediaStream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = FFT_SIZE;
+    analyser.smoothingTimeConstant = 0.15;
+    sourceNode.connect(analyser);
+    sampleRate = audioCtx.sampleRate;
+    binHz = sampleRate / analyser.fftSize;
+    freqData = new Float32Array(analyser.frequencyBinCount);
+    timeData = new Float32Array(analyser.fftSize);
+    micDot.className='dot on';
+    micStatus.textContent='Microfono attivo.';
+    resizeCanvas();
+    startIdleLoop();
+  }
+
+  // ================= DSP HELPERS =================
+  function computeChroma(fData){
+    const chroma = new Array(12).fill(0);
+    const maxBin = Math.min(fData.length, Math.floor(MAX_FREQ/binHz)+1);
+    const minBin = Math.max(1, Math.floor(MIN_FREQ/binHz));
+    for(let i=minBin; i<maxBin; i++){
+      const freq = i*binHz;
+      const db = fData[i];
+      if(!isFinite(db)) continue;
+      const mag = Math.pow(10, db/20);
+      const midi = 69 + 12*Math.log2(freq/440);
+      const pc = ((Math.round(midi)%12)+12)%12;
+      chroma[pc]+=mag;
+    }
+    return chroma;
+  }
+  function computeRMS(tData){
+    let sum=0;
+    for(let i=0;i<tData.length;i++) sum+=tData[i]*tData[i];
+    return Math.sqrt(sum/tData.length);
+  }
+  function computeFlatness(fData){
+    const maxBin = Math.min(fData.length, Math.floor(MAX_FREQ/binHz)+1);
+    const minBin = Math.max(1, Math.floor(MIN_FREQ/binHz));
+    let logSum=0, linSum=0, n=0;
+    for(let i=minBin;i<maxBin;i++){
+      const db=fData[i];
+      if(!isFinite(db)) continue;
+      const mag=Math.pow(10, db/20);
+      if(mag<=0) continue;
+      logSum+=Math.log(mag); linSum+=mag; n++;
+    }
+    if(n===0) return 1;
+    const geo=Math.exp(logSum/n), arith=linSum/n;
+    if(arith<=0) return 1;
+    return Math.min(1, geo/arith);
+  }
+  function bestChordMatch(chromaNorm){
+    let best={score:-1, root:0, quality:QUALITIES[0]};
+    for(let root=0; root<12; root++){
+      for(const q of QUALITIES){
+        const template=new Array(12).fill(0);
+        q.intervals.forEach(iv=>{ template[(root+iv)%12]=1; });
+        let dot=0, normC=0, normT=0;
+        for(let i=0;i<12;i++){ dot+=chromaNorm[i]*template[i]; normC+=chromaNorm[i]*chromaNorm[i]; normT+=template[i]*template[i]; }
+        const score = dot/((Math.sqrt(normC)*Math.sqrt(normT))+1e-9);
+        if(score>best.score) best={score, root, quality:q};
+      }
+    }
+    return best;
+  }
+
+  // ================= IDLE LIVE VISUAL =================
+  function startIdleLoop(){
+    if(idleRafId) return;
+    const loop=(ts)=>{
+      idleRafId=requestAnimationFrame(loop);
+      if(!analyser) return;
+      analyser.getFloatTimeDomainData(timeData);
+      drawWave(timeData);
+      if(ts-lastIdleDraw>60){ // throttle chroma bar refresh
+        lastIdleDraw=ts;
+        analyser.getFloatFrequencyData(freqData);
+        const chroma=computeChroma(freqData);
+        const maxV=Math.max(1e-6, ...chroma);
+        chroma.forEach((v,i)=>{
+          const pct=Math.max(2, Math.min(100, (v/maxV)*100));
+          barFillEls[i].style.height=pct+'%';
+        });
+      }
+    };
+    idleRafId=requestAnimationFrame(loop);
+  }
+  function drawWave(tData){
+    const w=waveCanvas.width, h=waveCanvas.height;
+    waveCtx.clearRect(0,0,w,h);
+    waveCtx.beginPath();
+    const stride=Math.max(1, Math.floor(tData.length/w));
+    let x=0;
+    for(let i=0;i<tData.length;i+=stride){
+      const y = h/2 + tData[i]*h*0.45;
+      if(x===0) waveCtx.moveTo(x,y); else waveCtx.lineTo(x,y);
+      x++;
+    }
+    const style=getComputedStyle(document.body);
+    waveCtx.strokeStyle = style.getPropertyValue('--primary') || '#ff2d3b';
+    waveCtx.lineWidth = 2*devicePixelRatio;
+    waveCtx.stroke();
+  }
+
+  // ================= CAPTURE =================
+  function captureTick(){
+    analyser.getFloatFrequencyData(freqData);
+    analyser.getFloatTimeDomainData(timeData);
+    captureData.push({
+      chroma: computeChroma(freqData),
+      rms: computeRMS(timeData),
+      flat: computeFlatness(freqData),
+      t: performance.now()
+    });
+  }
+  function beginCapture(label){
+    captureData=[];
+    capturing=true;
+    recIndicator.textContent=label;
+    captureInterval=setInterval(captureTick, CAPTURE_HOP_MS);
+  }
+  function endCapture(){
+    if(!capturing) return;
+    capturing=false;
+    clearInterval(captureInterval); captureInterval=null;
+    if(holdSafetyTimer){ clearTimeout(holdSafetyTimer); holdSafetyTimer=null; }
+    recIndicator.textContent='Analisi in corso…';
+    setTimeout(()=>analyzeCapture(captureData), 30);
+  }
+
+  // ---- hold-to-record ----
+  holdBtn.addEventListener('pointerdown', async (e)=>{
+    e.preventDefault();
+    try{ await ensureAudio(); }catch(_){ return; }
+    holdBtn.classList.add('recording');
+    beginCapture('🎙️ Ascolto in corso… (tieni premuto)');
+    holdSafetyTimer=setTimeout(()=>{ holdBtn.classList.remove('recording'); endCapture(); }, MAX_HOLD_MS);
+  });
+  ['pointerup','pointerleave','pointercancel'].forEach(evt=>{
+    holdBtn.addEventListener(evt, ()=>{
+      if(!capturing) return;
+      holdBtn.classList.remove('recording');
+      endCapture();
+    });
+  });
+
+  // ---- fixed duration ----
+  durSlider.addEventListener('input', ()=>{ durVal.textContent=durSlider.value; });
+  startBtn.addEventListener('click', async ()=>{
+    try{ await ensureAudio(); }catch(_){ return; }
+    const durationMs = parseInt(durSlider.value,10)*1000;
+    startBtn.disabled=true; startBtn.classList.add('recording');
+    beginCapture('🎙️ Ascolto in corso…');
+    const startedAt=performance.now();
+    const progressTimer=setInterval(()=>{
+      const pct=Math.min(100, ((performance.now()-startedAt)/durationMs)*100);
+      progressFill.style.width=pct+'%';
+    }, 50);
+    setTimeout(()=>{
+      clearInterval(progressTimer);
+      progressFill.style.width='0%';
+      startBtn.disabled=false; startBtn.classList.remove('recording');
+      endCapture();
+    }, durationMs);
+  });
+
+  // ---- calibration ----
+  calibrateBtn.addEventListener('click', async ()=>{
+    try{ await ensureAudio(); }catch(_){ return; }
+    calibrateBtn.disabled=true;
+    const label=calibrateBtn.textContent;
+    calibrateBtn.textContent='Calibrazione…';
+    const samples=[];
+    const iv=setInterval(()=>{
+      analyser.getFloatTimeDomainData(timeData);
+      samples.push(computeRMS(timeData));
+    }, 40);
+    setTimeout(()=>{
+      clearInterval(iv);
+      if(samples.length){
+        const avg=samples.reduce((a,b)=>a+b,0)/samples.length;
+        noiseFloorRMS = Math.max(0.006, avg*1.15);
+      }
+      calibrateBtn.disabled=false;
+      calibrateBtn.textContent=label;
+      micStatus.textContent='Calibrazione completata. Soglia rumore aggiornata.';
+    }, 1200);
+  });
+
+  // ================= ANALYSIS =================
+  function analyzeCapture(data){
+    if(data.length<3){
+      renderResult({state:'none', text:'Registrazione troppo breve — riprova tenendo premuto più a lungo, o aumenta la durata.'});
+      renderTempo({status:'insufficient'});
+      recIndicator.textContent='In attesa…';
+      return;
+    }
+    // aggregate chroma / rms / flatness
+    const chromaSum=new Array(12).fill(0);
+    let rmsSum=0, flatSum=0;
+    data.forEach(f=>{
+      for(let i=0;i<12;i++) chromaSum[i]+=f.chroma[i];
+      rmsSum+=f.rms; flatSum+=f.flat;
+    });
+    const n=data.length;
+    const avgChroma=chromaSum.map(v=>v/n);
+    const avgRMS=rmsSum/n;
+    const avgFlat=flatSum/n;
+
+    if(avgRMS < noiseFloorRMS*1.3){
+      renderResult({state:'none', text:'Nessun suono rilevato (silenzio).'});
+    } else if(avgFlat > FLATNESS_NOISE_THRESHOLD){
+      renderResult({state:'none', text:'Rumore ambientale rilevato — nessun accordo riconoscibile. Prova ad avvicinare il microfono e ridurre il rumore di fondo.'});
+    } else {
+      const maxV=Math.max(1e-6, ...avgChroma);
+      const chromaNorm=avgChroma.map(v=>v/maxV);
+      const activeCount = chromaNorm.filter(v=>v>ACTIVE_NOTE_REL_THRESHOLD).length;
+
+      if(activeCount<2){
+        const topIdx = chromaNorm.indexOf(Math.max(...chromaNorm));
+        renderResult({state:'warn', text:'Nota singola rilevata: '+NOTE_NAMES[topIdx]+' — non è un accordo completo (servono almeno 2 note distinte).'});
+      } else {
+        const best=bestChordMatch(chromaNorm);
+        const chordName=NOTE_NAMES[best.root]+' '+best.quality.name;
+        if(best.score>=STRONG_MATCH){
+          renderResult({state:'ok', text:chordName, confidence:best.score});
+        } else if(best.score>=WEAK_MATCH){
+          renderResult({state:'warn', text:chordName+' (identificazione incerta)', confidence:best.score});
+        } else {
+          renderResult({state:'warn', text:'Suono rilevato ma accordo non chiaramente identificabile.', confidence:best.score});
+        }
+      }
+    }
+
+    renderTempo(analyzeTempo(data));
+    recIndicator.textContent='In attesa…';
+  }
+
+  function analyzeTempo(data){
+    if(data.length<5) return {status:'insufficient'};
+    const rmsArr=data.map(d=>d.rms), times=data.map(d=>d.t);
+    const diffs=[0];
+    for(let i=1;i<rmsArr.length;i++) diffs.push(Math.max(0, rmsArr[i]-rmsArr[i-1]));
+    const meanDiff=diffs.reduce((a,b)=>a+b,0)/diffs.length;
+    const variance=diffs.reduce((a,b)=>a+(b-meanDiff)*(b-meanDiff),0)/diffs.length;
+    const thresh=meanDiff+Math.sqrt(variance)*0.8;
+
+    const onsets=[];
+    const minGapMs=150;
+    let lastOnsetTime=-Infinity;
+    for(let i=1;i<diffs.length-1;i++){
+      if(diffs[i]>thresh && diffs[i]>=diffs[i-1] && diffs[i]>=diffs[i+1]){
+        const t=times[i];
+        if(t-lastOnsetTime>minGapMs){
+          onsets.push({t, energy:rmsArr[i]});
+          lastOnsetTime=t;
+        }
+      }
+    }
+    if(onsets.length===0) return {status:'none'};
+    if(onsets.length===1) return {status:'single'};
+
+    const iois=[];
+    for(let i=1;i<onsets.length;i++) iois.push(onsets[i].t-onsets[i-1].t);
+    let filtered=iois.filter(v=>v>150 && v<1500);
+    if(filtered.length===0) filtered=iois.slice();
+    filtered.sort((a,b)=>a-b);
+    const median=filtered[Math.floor(filtered.length/2)];
+    const bpm=Math.round(60000/median);
+
+    let bestN=4, bestContrast=-1, reliable=false;
+    [2,3,4].forEach(N=>{
+      if(onsets.length < N*2) return;
+      const sums=new Array(N).fill(0), counts=new Array(N).fill(0);
+      onsets.forEach((o,idx)=>{ const r=idx%N; sums[r]+=o.energy; counts[r]++; });
+      const avgs=sums.map((s,idx)=>counts[idx]? s/counts[idx] : 0);
+      const overallAvg=avgs.reduce((a,b)=>a+b,0)/N;
+      const maxAvg=Math.max(...avgs);
+      const contrast=(maxAvg-overallAvg)/(overallAvg+1e-9);
+      if(contrast>bestContrast){ bestContrast=contrast; bestN=N; reliable=true; }
+    });
+
+    return {status:'ok', bpm, meter:bestN, onsetsCount:onsets.length, reliable, contrast:bestContrast};
+  }
+
+  // ================= RENDER =================
+  function renderResult(r){
+    resultPanel.className='result-panel result-'+r.state;
+    resultLabel.textContent = r.state==='ok' ? 'Accordo rilevato' : (r.state==='warn' ? 'Rilevamento parziale' : 'Nessun accordo');
+    resultChord.textContent = r.text;
+    resultConfidence.textContent = (typeof r.confidence==='number') ? ('Affidabilità: '+Math.round(r.confidence*100)+'%') : '';
+  }
+  function renderTempo(t){
+    if(t.status==='ok'){
+      tempoValue.textContent = t.meter+'/4 · ~'+t.bpm+' BPM';
+      tempoValue.title = t.reliable ? '' : 'stima poco affidabile con questa registrazione';
+    } else if(t.status==='single'){
+      tempoValue.textContent = '1/4';
+      tempoValue.title='rilevato un singolo impulso';
+    } else if(t.status==='none'){
+      tempoValue.textContent = 'n/d';
+      tempoValue.title='nessun impulso ritmico chiaro';
+    } else {
+      tempoValue.textContent = 'n/d';
+      tempoValue.title='registrazione troppo breve';
+    }
+  }
+
+  // init
+  resizeCanvas();
+})();
+</script>
+</body>
+</html>
