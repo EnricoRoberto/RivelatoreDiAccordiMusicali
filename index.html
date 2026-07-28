@@ -88,7 +88,8 @@
     opacity:.55;
   }
 
-  .app{ position:relative; z-index:1; max-width:900px; margin:0 auto; padding:18px 16px 140px; }
+  .app{ position:relative; z-index:1; max-width:900px; margin:0 auto; padding:18px 16px 210px; }
+  @media (min-width:640px){ .app{ padding-bottom:150px; } }
 
   /* ---------- HEADER ---------- */
   .topbar{
@@ -196,8 +197,8 @@
   /* ---------- RESULT (fixed bottom) ---------- */
   .result-panel{
     position:fixed; left:0; right:0; bottom:0; z-index:5;
-    display:flex; gap:18px; align-items:center; justify-content:space-between;
-    padding:16px 22px; background:var(--panel); border-top:1px solid var(--panel-border);
+    display:flex; flex-direction:column; align-items:stretch; gap:8px;
+    padding:14px 16px; background:var(--panel); border-top:1px solid var(--panel-border);
     box-shadow:0 -10px 30px rgba(0,0,0,.25);
     transition:background var(--transition);
   }
@@ -208,20 +209,24 @@
   .result-main{ min-width:0; }
   .result-label{ font-size:.72rem; letter-spacing:1.4px; text-transform:uppercase; color:var(--muted); margin-bottom:2px; }
   .result-chord{
-    font-family:var(--font-display); font-size:2.1rem; line-height:1.1; color:var(--primary);
-    text-shadow:var(--glow); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    font-family:var(--font-display); font-size:clamp(1.25rem, 6.5vw, 2.1rem); line-height:1.18; color:var(--primary);
+    text-shadow:var(--glow); white-space:normal; overflow-wrap:break-word; word-break:break-word;
   }
+  .result-chord.long-text{ font-size:clamp(1rem, 4.2vw, 1.3rem); font-family:var(--font-body); font-weight:600; }
   body.theme-classic .result-chord{ font-style:italic; }
   .result-confidence{ font-size:.78rem; color:var(--muted); margin-top:2px; }
 
-  .result-tempo{ text-align:right; flex:none; }
-  .tempo-value{ font-family:var(--font-body); font-weight:700; font-size:1.5rem; color:var(--accent); }
+  .result-tempo{
+    display:flex; align-items:baseline; gap:10px; flex:none;
+    padding-top:8px; border-top:1px solid var(--panel-border);
+  }
+  .tempo-value{ font-family:var(--font-body); font-weight:700; font-size:1.15rem; color:var(--accent); white-space:nowrap; }
   .tempo-sub{ font-size:.72rem; color:var(--muted); letter-spacing:.6px; }
 
-  @media (max-width:520px){
-    .result-chord{ font-size:1.5rem; }
-    .tempo-value{ font-size:1.15rem; }
-    .result-panel{ padding:12px 14px; }
+  @media (min-width:640px){
+    .result-panel{ flex-direction:row; align-items:center; justify-content:space-between; gap:18px; padding:16px 22px; }
+    .result-tempo{ flex-direction:column; align-items:flex-end; text-align:right; border-top:none; padding-top:0; }
+    .tempo-value{ font-size:1.5rem; }
   }
 
   footer.tips{ text-align:center; color:var(--muted); font-size:.78rem; margin-top:6px; }
@@ -681,6 +686,7 @@
     resultPanel.className='result-panel result-'+r.state;
     resultLabel.textContent = r.state==='ok' ? 'Accordo rilevato' : (r.state==='warn' ? 'Rilevamento parziale' : 'Nessun accordo');
     resultChord.textContent = r.text;
+    resultChord.classList.toggle('long-text', r.text.length>26);
     resultConfidence.textContent = (typeof r.confidence==='number') ? ('Affidabilità: '+Math.round(r.confidence*100)+'%') : '';
   }
   function renderTempo(t){
