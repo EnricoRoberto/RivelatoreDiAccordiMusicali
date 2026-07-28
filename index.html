@@ -88,8 +88,8 @@
     opacity:.55;
   }
 
-  .app{ position:relative; z-index:1; max-width:900px; margin:0 auto; padding:18px 16px 210px; }
-  @media (min-width:640px){ .app{ padding-bottom:150px; } }
+  .app{ position:relative; z-index:1; max-width:900px; margin:0 auto; padding:18px 16px 230px; }
+  @media (min-width:640px){ .app{ padding-bottom:165px; } }
 
   /* ---------- HEADER ---------- */
   .topbar{
@@ -184,13 +184,14 @@
 
   /* ---------- VISUALIZER ---------- */
   #waveCanvas{ width:100%; height:80px; display:block; border-radius:8px; background:var(--panel2); }
-  .chroma-bars{
-    display:flex; gap:4px; align-items:flex-end; height:110px; margin-top:14px;
-    padding:8px; background:var(--panel2); border-radius:8px;
-  }
-  .chroma-bar{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:4px; }
-  .chroma-bar .fill{ width:100%; max-width:22px; height:2%; border-radius:3px 3px 0 0; background:var(--bar-grad); transition:height .06s linear; }
-  .chroma-bar .lbl{ font-size:.68rem; color:var(--muted); font-family:var(--font-body); }
+  .panel-caption{ font-size:.76rem; color:var(--muted); margin:-6px 0 12px; }
+  .note-rows{ display:flex; flex-direction:column; gap:10px; margin-top:14px; }
+  .note-row{ background:var(--panel2); border-radius:8px; padding:8px; }
+  .note-row-label{ font-size:.68rem; color:var(--muted); letter-spacing:.4px; margin-bottom:6px; }
+  .note-row-bars{ display:flex; gap:3px; align-items:flex-end; height:64px; }
+  .chroma-bar{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:3px; }
+  .chroma-bar .fill{ width:100%; max-width:18px; height:2%; border-radius:3px 3px 0 0; background:var(--bar-grad); transition:height .06s linear; }
+  .chroma-bar .lbl{ font-size:.62rem; color:var(--muted); font-family:var(--font-body); }
 
   .rec-indicator{ margin-top:10px; text-align:center; font-size:.85rem; color:var(--muted); letter-spacing:.4px; }
 
@@ -215,6 +216,7 @@
   .result-chord.long-text{ font-size:clamp(1rem, 4.2vw, 1.3rem); font-family:var(--font-body); font-weight:600; }
   body.theme-classic .result-chord{ font-style:italic; }
   .result-confidence{ font-size:.78rem; color:var(--muted); margin-top:2px; }
+  .result-notes{ font-size:.78rem; color:var(--muted); margin-top:2px; font-style:italic; }
 
   .result-tempo{
     display:flex; align-items:baseline; gap:10px; flex:none;
@@ -276,8 +278,9 @@
 
   <section class="panel">
     <h2>Analisi in tempo reale</h2>
+    <div class="panel-caption">Rilevamento su 3 ottave (Mi2–Re♯5): ogni riga rappresenta un'ottava, ogni barra una nota.</div>
     <canvas id="waveCanvas"></canvas>
-    <div class="chroma-bars" id="chromaBars"></div>
+    <div class="note-rows" id="noteRows"></div>
     <div class="rec-indicator" id="recIndicator">In attesa…</div>
   </section>
 
@@ -289,6 +292,7 @@
     <div class="result-label" id="resultLabel">Pronto ad ascoltare</div>
     <div class="result-chord" id="resultChord">—</div>
     <div class="result-confidence" id="resultConfidence"></div>
+    <div class="result-notes" id="resultNotes"></div>
   </div>
   <div class="result-tempo">
     <div class="tempo-value" id="tempoValue">—</div>
@@ -309,14 +313,16 @@
     { name:'Aumentato', intervals:[0,4,8]   },
     { name:'Quinta (power chord)', intervals:[0,7] }
   ];
-  const FFT_SIZE = 8192;
-  const MIN_FREQ = 55;    // ~ A1
-  const MAX_FREQ = 5000;
+  const FFT_SIZE = 32768;        // risoluzione fine, necessaria per distinguere semitoni nelle ottave basse
+  const NOTE_MIN_MIDI = 40;      // Mi2 (~82.4 Hz) — nota più bassa rilevata
+  const NOTE_COUNT = 36;         // 3 ottave × 12 semitoni = Mi2 … Re♯5
+  const HARMONIC_WEIGHTS = [1, 0.7, 0.5, 0.3]; // peso di fondamentale, 2ª, 3ª, 4ª armonica
+  const NOISE_MIN_FREQ = 55, NOISE_MAX_FREQ = 5000; // banda larga usata solo per il controllo rumore/silenzio
   const CAPTURE_HOP_MS = 40;      // ~25 fps sampling while capturing
   const MAX_HOLD_MS = 4000;       // safety cap for "tieni premuto"
   const STRONG_MATCH = 0.72;
   const WEAK_MATCH = 0.50;
-  const ACTIVE_NOTE_REL_THRESHOLD = 0.35;
+  const PEAK_REL_THRESHOLD = 0.25; // soglia relativa (sul picco max) per considerare una nota "presente"
   const FLATNESS_NOISE_THRESHOLD = 0.55;
   let noiseFloorRMS = 0.012; // default, refined by calibration
 
@@ -333,10 +339,10 @@
   const holdBtn=el('holdBtn'), startBtn=el('startBtn');
   const durSlider=el('durSlider'), durVal=el('durVal'), progressFill=el('progressFill');
   const waveCanvas=el('waveCanvas'), waveCtx=waveCanvas.getContext('2d');
-  const chromaBarsEl=el('chromaBars');
+  const noteRowsEl=el('noteRows');
   const recIndicator=el('recIndicator');
   const resultPanel=el('resultPanel'), resultLabel=el('resultLabel'), resultChord=el('resultChord'),
-        resultConfidence=el('resultConfidence'), tempoValue=el('tempoValue');
+        resultConfidence=el('resultConfidence'), resultNotes=el('resultNotes'), tempoValue=el('tempoValue');
   const calibrateBtn=el('calibrateBtn');
   const btnRock=el('btnRock'), btnClassic=el('btnClassic');
 
@@ -348,15 +354,34 @@
     if(!hasGUM){ secureWarning.style.display='block'; }
   }
 
-  // build chroma bar elements
-  const barFillEls = NOTE_NAMES.map((name)=>{
-    const wrap=document.createElement('div'); wrap.className='chroma-bar';
-    const fill=document.createElement('div'); fill.className='fill';
-    const lbl=document.createElement('div'); lbl.className='lbl'; lbl.textContent=name;
-    wrap.appendChild(fill); wrap.appendChild(lbl);
-    chromaBarsEl.appendChild(wrap);
-    return fill;
-  });
+  function midiToFreq(midi){ return 440*Math.pow(2,(midi-69)/12); }
+  function noteLabel(midi){
+    const pc=((midi%12)+12)%12;
+    const octave=Math.floor(midi/12)-1;
+    return NOTE_NAMES[pc]+octave;
+  }
+
+  // build 3 rows × 12 note bars = 3 octaves total
+  const ROW_LABELS=['Ottava bassa','Ottava media','Ottava alta'];
+  const barFillEls = new Array(NOTE_COUNT);
+  for(let row=0; row<3; row++){
+    const rowStartMidi = NOTE_MIN_MIDI+row*12, rowEndMidi = rowStartMidi+11;
+    const rowEl=document.createElement('div'); rowEl.className='note-row';
+    const labelEl=document.createElement('div'); labelEl.className='note-row-label';
+    labelEl.textContent = ROW_LABELS[row]+' ('+noteLabel(rowStartMidi)+'–'+noteLabel(rowEndMidi)+')';
+    const barsEl=document.createElement('div'); barsEl.className='note-row-bars';
+    for(let col=0; col<12; col++){
+      const midi=rowStartMidi+col;
+      const wrap=document.createElement('div'); wrap.className='chroma-bar';
+      const fill=document.createElement('div'); fill.className='fill';
+      const lbl=document.createElement('div'); lbl.className='lbl'; lbl.textContent=NOTE_NAMES[col];
+      wrap.appendChild(fill); wrap.appendChild(lbl);
+      barsEl.appendChild(wrap);
+      barFillEls[midi-NOTE_MIN_MIDI]=fill;
+    }
+    rowEl.appendChild(labelEl); rowEl.appendChild(barsEl);
+    noteRowsEl.appendChild(rowEl);
+  }
 
   function resizeCanvas(){
     const rect=waveCanvas.getBoundingClientRect();
@@ -411,20 +436,67 @@
   }
 
   // ================= DSP HELPERS =================
-  function computeChroma(fData){
-    const chroma = new Array(12).fill(0);
-    const maxBin = Math.min(fData.length, Math.floor(MAX_FREQ/binHz)+1);
-    const minBin = Math.max(1, Math.floor(MIN_FREQ/binHz));
-    for(let i=minBin; i<maxBin; i++){
-      const freq = i*binHz;
-      const db = fData[i];
-      if(!isFinite(db)) continue;
-      const mag = Math.pow(10, db/20);
-      const midi = 69 + 12*Math.log2(freq/440);
-      const pc = ((Math.round(midi)%12)+12)%12;
-      chroma[pc]+=mag;
+  // Forza (salienza) di ciascuna delle 36 note (3 ottave) sommando, per ognuna,
+  // il picco locale alla fondamentale + picchi alle prime 3 armoniche (pesati).
+  // Questo è molto più preciso di una somma grezza di bin FFT per pitch-class:
+  // il rumore a banda larga non produce picchi coerenti a fondamentale+armoniche,
+  // mentre una vera nota sì — quindi note reali emergono nettamente dal rumore.
+  function computeNoteStrengths(fData){
+    const strengths=new Array(NOTE_COUNT);
+    const nyquist=sampleRate/2;
+    for(let n=0;n<NOTE_COUNT;n++){
+      const f0=midiToFreq(NOTE_MIN_MIDI+n);
+      let logSum=0, weightSum=0;
+      for(let h=1; h<=4; h++){
+        const targetF=f0*h;
+        if(targetF>=nyquist) break;
+        const halfWinHz=targetF*(Math.pow(2,1/24)-1); // ± quarto di semitono, tollera piccola stonatura
+        const loBin=Math.max(0, Math.floor((targetF-halfWinHz)/binHz));
+        const hiBin=Math.min(fData.length-1, Math.ceil((targetF+halfWinHz)/binHz));
+        let peakMag=1e-7; // floor minimo per evitare log(0)
+        for(let b=loBin; b<=hiBin; b++){
+          const db=fData[b];
+          if(!isFinite(db)) continue;
+          const mag=Math.pow(10, db/20);
+          if(mag>peakMag) peakMag=mag;
+        }
+        const w=HARMONIC_WEIGHTS[h-1];
+        logSum += w*Math.log(peakMag);
+        weightSum += w;
+      }
+      // media geometrica pesata: se la fondamentale è assente, il punteggio crolla
+      // anche se un'armonica superiore è forte — evita i falsi "un'ottava sotto"
+      strengths[n] = weightSum>0 ? Math.exp(logSum/weightSum) : 0;
     }
-    return chroma;
+    return strengths;
+  }
+  // individua le note "presenti" come massimi locali sopra una soglia relativa al picco più forte
+  function pickDetectedNotes(strengths){
+    const maxS=Math.max(1e-9, ...strengths);
+    const detected=[];
+    for(let i=0;i<strengths.length;i++){
+      const v=strengths[i];
+      if(v<maxS*PEAK_REL_THRESHOLD) continue;
+      const prev=i>0?strengths[i-1]:-Infinity;
+      const next=i<strengths.length-1?strengths[i+1]:-Infinity;
+      if(v>=prev && v>=next){
+        const midi=NOTE_MIN_MIDI+i;
+        detected.push({ midi, pc:((midi%12)+12)%12, label:noteLabel(midi), strength:v });
+      }
+    }
+    detected.sort((a,b)=>a.midi-b.midi);
+    return detected;
+  }
+  // ripiega le note rilevate (con ottava) in un vettore a 12 pitch-class per il match dell'accordo
+  function foldNotesToChroma(detected){
+    const vec=new Array(12).fill(0);
+    if(detected.length===0) return vec;
+    const maxS=Math.max(...detected.map(d=>d.strength));
+    detected.forEach(d=>{
+      const norm=d.strength/maxS;
+      if(norm>vec[d.pc]) vec[d.pc]=norm;
+    });
+    return vec;
   }
   function computeRMS(tData){
     let sum=0;
@@ -432,8 +504,8 @@
     return Math.sqrt(sum/tData.length);
   }
   function computeFlatness(fData){
-    const maxBin = Math.min(fData.length, Math.floor(MAX_FREQ/binHz)+1);
-    const minBin = Math.max(1, Math.floor(MIN_FREQ/binHz));
+    const maxBin = Math.min(fData.length, Math.floor(NOISE_MAX_FREQ/binHz)+1);
+    const minBin = Math.max(1, Math.floor(NOISE_MIN_FREQ/binHz));
     let logSum=0, linSum=0, n=0;
     for(let i=minBin;i<maxBin;i++){
       const db=fData[i];
@@ -470,12 +542,12 @@
       if(!analyser) return;
       analyser.getFloatTimeDomainData(timeData);
       drawWave(timeData);
-      if(ts-lastIdleDraw>60){ // throttle chroma bar refresh
+      if(ts-lastIdleDraw>80){ // throttle refresh (FFT più grande = più costosa)
         lastIdleDraw=ts;
         analyser.getFloatFrequencyData(freqData);
-        const chroma=computeChroma(freqData);
-        const maxV=Math.max(1e-6, ...chroma);
-        chroma.forEach((v,i)=>{
+        const strengths=computeNoteStrengths(freqData);
+        const maxV=Math.max(1e-6, ...strengths);
+        strengths.forEach((v,i)=>{
           const pct=Math.max(2, Math.min(100, (v/maxV)*100));
           barFillEls[i].style.height=pct+'%';
         });
@@ -505,7 +577,7 @@
     analyser.getFloatFrequencyData(freqData);
     analyser.getFloatTimeDomainData(timeData);
     captureData.push({
-      chroma: computeChroma(freqData),
+      strengths: computeNoteStrengths(freqData),
       rms: computeRMS(timeData),
       flat: computeFlatness(freqData),
       t: performance.now()
@@ -593,15 +665,15 @@
       recIndicator.textContent='In attesa…';
       return;
     }
-    // aggregate chroma / rms / flatness
-    const chromaSum=new Array(12).fill(0);
+    // aggregate note-strengths / rms / flatness across the capture window
+    const strengthsSum=new Array(NOTE_COUNT).fill(0);
     let rmsSum=0, flatSum=0;
     data.forEach(f=>{
-      for(let i=0;i<12;i++) chromaSum[i]+=f.chroma[i];
+      for(let i=0;i<NOTE_COUNT;i++) strengthsSum[i]+=f.strengths[i];
       rmsSum+=f.rms; flatSum+=f.flat;
     });
     const n=data.length;
-    const avgChroma=chromaSum.map(v=>v/n);
+    const avgStrengths=strengthsSum.map(v=>v/n);
     const avgRMS=rmsSum/n;
     const avgFlat=flatSum/n;
 
@@ -610,22 +682,25 @@
     } else if(avgFlat > FLATNESS_NOISE_THRESHOLD){
       renderResult({state:'none', text:'Rumore ambientale rilevato — nessun accordo riconoscibile. Prova ad avvicinare il microfono e ridurre il rumore di fondo.'});
     } else {
-      const maxV=Math.max(1e-6, ...avgChroma);
-      const chromaNorm=avgChroma.map(v=>v/maxV);
-      const activeCount = chromaNorm.filter(v=>v>ACTIVE_NOTE_REL_THRESHOLD).length;
+      const detected = pickDetectedNotes(avgStrengths);
+      const distinctPCs = new Set(detected.map(d=>d.pc));
 
-      if(activeCount<2){
-        const topIdx = chromaNorm.indexOf(Math.max(...chromaNorm));
-        renderResult({state:'warn', text:'Nota singola rilevata: '+NOTE_NAMES[topIdx]+' — non è un accordo completo (servono almeno 2 note distinte).'});
+      if(detected.length===0){
+        renderResult({state:'none', text:'Nessuna nota chiaramente distinguibile dal rumore di fondo.'});
+      } else if(distinctPCs.size<2){
+        const top = detected.reduce((a,b)=> b.strength>a.strength?b:a, detected[0]);
+        renderResult({state:'warn', text:'Nota singola rilevata: '+top.label+' — non è un accordo completo (servono almeno 2 note distinte).'});
       } else {
-        const best=bestChordMatch(chromaNorm);
-        const chordName=NOTE_NAMES[best.root]+' '+best.quality.name;
+        const folded = foldNotesToChroma(detected);
+        const best = bestChordMatch(folded);
+        const chordName = NOTE_NAMES[best.root]+' '+best.quality.name;
+        const notesLabel = 'Note rilevate: '+detected.map(d=>d.label).join(', ');
         if(best.score>=STRONG_MATCH){
-          renderResult({state:'ok', text:chordName, confidence:best.score});
+          renderResult({state:'ok', text:chordName, confidence:best.score, notes:notesLabel});
         } else if(best.score>=WEAK_MATCH){
-          renderResult({state:'warn', text:chordName+' (identificazione incerta)', confidence:best.score});
+          renderResult({state:'warn', text:chordName+' (identificazione incerta)', confidence:best.score, notes:notesLabel});
         } else {
-          renderResult({state:'warn', text:'Suono rilevato ma accordo non chiaramente identificabile.', confidence:best.score});
+          renderResult({state:'warn', text:'Suono rilevato ma accordo non chiaramente identificabile.', confidence:best.score, notes:notesLabel});
         }
       }
     }
@@ -688,6 +763,7 @@
     resultChord.textContent = r.text;
     resultChord.classList.toggle('long-text', r.text.length>26);
     resultConfidence.textContent = (typeof r.confidence==='number') ? ('Affidabilità: '+Math.round(r.confidence*100)+'%') : '';
+    resultNotes.textContent = r.notes || '';
   }
   function renderTempo(t){
     if(t.status==='ok'){
