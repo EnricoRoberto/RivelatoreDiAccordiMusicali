@@ -255,6 +255,9 @@
       <span id="micStatus">Microfono non attivo — premi un pulsante di ascolto per attivarlo.</span>
       <button class="link-btn" id="calibrateBtn" style="margin-left:auto;">🔧 Calibra rumore di fondo</button>
     </div>
+    <div class="status-line" style="margin-top:6px; font-size:.76rem; opacity:.75;">
+      Soglia rumore attuale: <span id="noiseFloorDisplay">—</span> (visibile anche come banda tratteggiata sulla forma d'onda qui sotto)
+    </div>
     <div class="warning-banner" id="secureWarning">
       Il microfono richiede una pagina servita in HTTPS o aperta da <code>localhost</code>. Se non funziona da file locale, avvia un server (es. <code>python -m http.server</code>) e apri <code>http://localhost:PORT/</code>.
     </div>
@@ -334,6 +337,7 @@
   const PEAK_REL_THRESHOLD = 0.25; // soglia relativa (sul picco max) per considerare una nota "presente"
   const FLATNESS_NOISE_THRESHOLD = 0.55;
   let noiseFloorRMS = 0.012; // default, refined by calibration
+  function updateNoiseFloorDisplay(){ noiseFloorDisplay.textContent = noiseFloorRMS.toFixed(4); }
 
   // ================= STATE =================
   let audioCtx=null, analyser=null, sourceNode=null, mediaStream=null;
@@ -352,7 +356,7 @@
   const recIndicator=el('recIndicator');
   const resultPanel=el('resultPanel'), resultLabel=el('resultLabel'), resultChord=el('resultChord'),
         resultConfidence=el('resultConfidence'), resultNotes=el('resultNotes'), tempoValue=el('tempoValue');
-  const calibrateBtn=el('calibrateBtn');
+  const calibrateBtn=el('calibrateBtn'), noiseFloorDisplay=el('noiseFloorDisplay');
   const btnRock=el('btnRock'), btnClassic=el('btnClassic');
 
   if(!window.isSecureContext){ secureWarning.style.display='block'; }
@@ -391,7 +395,7 @@
   function resizeCanvas(){
     const rect=waveCanvas.getBoundingClientRect();
     waveCanvas.width=Math.max(1,Math.floor(rect.width*devicePixelRatio));
-    waveCanvas.height=Math.max(1,Math.floor(80*devicePixelRatio));
+    waveCanvas.height=Math.max(1,Math.floor(rect.height*devicePixelRatio));
   }
   window.addEventListener('resize', resizeCanvas);
 
@@ -563,6 +567,22 @@
   function drawWave(tData){
     const w=waveCanvas.width, h=waveCanvas.height;
     waveCtx.clearRect(0,0,w,h);
+    const style=getComputedStyle(document.body);
+
+    // banda tratteggiata = soglia di calibrazione (RMS). Sotto questa banda un'intera
+    // registrazione viene considerata "silenzio". Non filtra il rumore in tempo reale:
+    // è solo il riferimento visivo di ciò che la calibrazione ha impostato.
+    const threshY = Math.min(h*0.42, Math.max(2.5*devicePixelRatio, noiseFloorRMS*h*10));
+    waveCtx.save();
+    waveCtx.setLineDash([4*devicePixelRatio, 4*devicePixelRatio]);
+    waveCtx.strokeStyle = style.getPropertyValue('--accent') || '#ffb020';
+    waveCtx.lineWidth = 1.5*devicePixelRatio;
+    [h/2-threshY, h/2+threshY].forEach(y=>{
+      waveCtx.beginPath(); waveCtx.moveTo(0,y); waveCtx.lineTo(w,y); waveCtx.stroke();
+    });
+    waveCtx.restore();
+
+    // forma d'onda live, sopra la banda soglia
     waveCtx.beginPath();
     const stride=Math.max(1, Math.floor(tData.length/w));
     let x=0;
@@ -571,7 +591,6 @@
       if(x===0) waveCtx.moveTo(x,y); else waveCtx.lineTo(x,y);
       x++;
     }
-    const style=getComputedStyle(document.body);
     waveCtx.strokeStyle = style.getPropertyValue('--primary') || '#ff2d3b';
     waveCtx.lineWidth = 2*devicePixelRatio;
     waveCtx.stroke();
@@ -656,6 +675,7 @@
         const avg=samples.reduce((a,b)=>a+b,0)/samples.length;
         noiseFloorRMS = Math.max(0.006, avg*1.15);
       }
+      updateNoiseFloorDisplay();
       calibrateBtn.disabled=false;
       calibrateBtn.textContent=label;
       micStatus.textContent='Calibrazione completata. Soglia rumore aggiornata.';
@@ -788,6 +808,7 @@
 
   // init
   resizeCanvas();
+  updateNoiseFloorDisplay();
 })();
 </script>
 </body>
