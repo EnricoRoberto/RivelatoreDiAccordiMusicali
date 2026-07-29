@@ -42,6 +42,7 @@
     --ok-tint: rgba(255,45,59,.14);
     --warn-tint: rgba(255,176,32,.14);
     --none-tint: rgba(255,255,255,.03);
+    --tier-low:#ff2d3b; --tier-mid:#ffb020; --tier-high:#a8ff4d;
   }
   body.theme-rock::before{
     content:"";
@@ -69,6 +70,7 @@
     --ok-tint: rgba(122,37,48,.08);
     --warn-tint: rgba(169,120,31,.10);
     --none-tint: rgba(0,0,0,.02);
+    --tier-low:#7a2530; --tier-mid:#a9781f; --tier-high:#3f6b57;
   }
   body.theme-classic::before{
     content:"";
@@ -88,8 +90,7 @@
     opacity:.55;
   }
 
-  .app{ position:relative; z-index:1; max-width:900px; margin:0 auto; padding:18px 16px 230px; }
-  @media (min-width:640px){ .app{ padding-bottom:165px; } }
+  .app{ position:relative; z-index:1; max-width:900px; margin:0 auto; padding:18px 16px 24px; }
 
   /* ---------- HEADER ---------- */
   .topbar{
@@ -183,24 +184,27 @@
   .progress-fill{ height:100%; width:0%; background:var(--bar-grad); transition:width .05s linear; }
 
   /* ---------- VISUALIZER ---------- */
-  #waveCanvas{ width:100%; height:80px; display:block; border-radius:8px; background:var(--panel2); }
+  #waveCanvas{ width:100%; height:64px; display:block; border-radius:8px; background:var(--panel2); }
   .panel-caption{ font-size:.76rem; color:var(--muted); margin:-6px 0 12px; }
-  .note-rows{ display:flex; flex-direction:column; gap:10px; margin-top:14px; }
-  .note-row{ background:var(--panel2); border-radius:8px; padding:8px; }
-  .note-row-label{ font-size:.68rem; color:var(--muted); letter-spacing:.4px; margin-bottom:6px; }
-  .note-row-bars{ display:flex; gap:3px; align-items:flex-end; height:64px; }
-  .chroma-bar{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:3px; }
-  .chroma-bar .fill{ width:100%; max-width:18px; height:2%; border-radius:3px 3px 0 0; background:var(--bar-grad); transition:height .06s linear; }
-  .chroma-bar .lbl{ font-size:.62rem; color:var(--muted); font-family:var(--font-body); }
+  .note-groups{ display:flex; gap:3px; align-items:flex-end; height:88px; margin-top:12px; padding:8px 5px; background:var(--panel2); border-radius:8px; }
+  .note-group{ flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; height:100%; }
+  .note-group .cluster{ flex:1; display:flex; align-items:flex-end; justify-content:center; gap:1.5px; width:100%; }
+  .note-group .bar{ width:5px; min-height:2px; border-radius:2px 2px 0 0; transition:height .06s linear; }
+  .note-group .bar.tier-0{ background:var(--tier-low); }
+  .note-group .bar.tier-1{ background:var(--tier-mid); }
+  .note-group .bar.tier-2{ background:var(--tier-high); }
+  .note-group .lbl{ font-size:.62rem; color:var(--muted); margin-top:4px; }
+  .tier-legend{ display:flex; gap:12px; flex-wrap:wrap; font-size:.68rem; color:var(--muted); margin-top:8px; }
+  .tier-legend .dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; vertical-align:middle; }
+  .tier-legend .dot.tier-0{ background:var(--tier-low); }
+  .tier-legend .dot.tier-1{ background:var(--tier-mid); }
+  .tier-legend .dot.tier-2{ background:var(--tier-high); }
 
   .rec-indicator{ margin-top:10px; text-align:center; font-size:.85rem; color:var(--muted); letter-spacing:.4px; }
 
-  /* ---------- RESULT (fixed bottom) ---------- */
+  /* ---------- RESULT ---------- */
   .result-panel{
-    position:fixed; left:0; right:0; bottom:0; z-index:5;
     display:flex; flex-direction:column; align-items:stretch; gap:8px;
-    padding:14px 16px; background:var(--panel); border-top:1px solid var(--panel-border);
-    box-shadow:0 -10px 30px rgba(0,0,0,.25);
     transition:background var(--transition);
   }
   .result-panel.result-ok{ background:var(--ok-tint); }
@@ -276,28 +280,33 @@
     </div>
   </section>
 
+  <section class="panel result-panel result-none" id="resultPanel">
+    <div class="result-main">
+      <div class="result-label" id="resultLabel">Pronto ad ascoltare</div>
+      <div class="result-chord" id="resultChord">—</div>
+      <div class="result-confidence" id="resultConfidence"></div>
+      <div class="result-notes" id="resultNotes"></div>
+    </div>
+    <div class="result-tempo">
+      <div class="tempo-value" id="tempoValue">—</div>
+      <div class="tempo-sub">metro / tempo</div>
+    </div>
+  </section>
+
   <section class="panel">
     <h2>Analisi in tempo reale</h2>
-    <div class="panel-caption">Rilevamento su 3 ottave (Mi2–Re♯5): ogni riga rappresenta un'ottava, ogni barra una nota.</div>
+    <div class="panel-caption">Rilevamento su 3 ottave (Mi2–Re♯5): ogni colonna è una nota, le 3 barrette colorate sono le sue occorrenze nelle 3 ottave.</div>
     <canvas id="waveCanvas"></canvas>
-    <div class="note-rows" id="noteRows"></div>
+    <div class="note-groups" id="noteGroups"></div>
+    <div class="tier-legend">
+      <span><i class="dot tier-0"></i>Ottava bassa (Mi2–Re♯3)</span>
+      <span><i class="dot tier-1"></i>Ottava media (Mi3–Re♯4)</span>
+      <span><i class="dot tier-2"></i>Ottava alta (Mi4–Re♯5)</span>
+    </div>
     <div class="rec-indicator" id="recIndicator">In attesa…</div>
   </section>
 
   <footer class="tips">Suggerimento: suona l'accordo in modo netto e vicino al microfono; l'ambiente circostante può disturbare il rilevamento.</footer>
-</div>
-
-<div class="result-panel result-none" id="resultPanel">
-  <div class="result-main">
-    <div class="result-label" id="resultLabel">Pronto ad ascoltare</div>
-    <div class="result-chord" id="resultChord">—</div>
-    <div class="result-confidence" id="resultConfidence"></div>
-    <div class="result-notes" id="resultNotes"></div>
-  </div>
-  <div class="result-tempo">
-    <div class="tempo-value" id="tempoValue">—</div>
-    <div class="tempo-sub">metro / tempo</div>
-  </div>
 </div>
 
 <script>
@@ -339,7 +348,7 @@
   const holdBtn=el('holdBtn'), startBtn=el('startBtn');
   const durSlider=el('durSlider'), durVal=el('durVal'), progressFill=el('progressFill');
   const waveCanvas=el('waveCanvas'), waveCtx=waveCanvas.getContext('2d');
-  const noteRowsEl=el('noteRows');
+  const noteGroupsEl=el('noteGroups');
   const recIndicator=el('recIndicator');
   const resultPanel=el('resultPanel'), resultLabel=el('resultLabel'), resultChord=el('resultChord'),
         resultConfidence=el('resultConfidence'), resultNotes=el('resultNotes'), tempoValue=el('tempoValue');
@@ -361,26 +370,22 @@
     return NOTE_NAMES[pc]+octave;
   }
 
-  // build 3 rows × 12 note bars = 3 octaves total
-  const ROW_LABELS=['Ottava bassa','Ottava media','Ottava alta'];
+  // build 12 columns (Do..Si) × 3 overlaid tier-bars each = 3 octaves in one compact row
   const barFillEls = new Array(NOTE_COUNT);
-  for(let row=0; row<3; row++){
-    const rowStartMidi = NOTE_MIN_MIDI+row*12, rowEndMidi = rowStartMidi+11;
-    const rowEl=document.createElement('div'); rowEl.className='note-row';
-    const labelEl=document.createElement('div'); labelEl.className='note-row-label';
-    labelEl.textContent = ROW_LABELS[row]+' ('+noteLabel(rowStartMidi)+'–'+noteLabel(rowEndMidi)+')';
-    const barsEl=document.createElement('div'); barsEl.className='note-row-bars';
-    for(let col=0; col<12; col++){
-      const midi=rowStartMidi+col;
-      const wrap=document.createElement('div'); wrap.className='chroma-bar';
-      const fill=document.createElement('div'); fill.className='fill';
-      const lbl=document.createElement('div'); lbl.className='lbl'; lbl.textContent=NOTE_NAMES[col];
-      wrap.appendChild(fill); wrap.appendChild(lbl);
-      barsEl.appendChild(wrap);
-      barFillEls[midi-NOTE_MIN_MIDI]=fill;
+  for(let pc=0; pc<12; pc++){
+    const group=document.createElement('div'); group.className='note-group';
+    const cluster=document.createElement('div'); cluster.className='cluster';
+    for(let tier=0; tier<3; tier++){
+      const bar=document.createElement('div'); bar.className='bar tier-'+tier;
+      cluster.appendChild(bar);
+      for(let i=tier*12; i<tier*12+12; i++){
+        const midi=NOTE_MIN_MIDI+i;
+        if(((midi%12)+12)%12===pc){ barFillEls[i]=bar; break; }
+      }
     }
-    rowEl.appendChild(labelEl); rowEl.appendChild(barsEl);
-    noteRowsEl.appendChild(rowEl);
+    const lbl=document.createElement('div'); lbl.className='lbl'; lbl.textContent=NOTE_NAMES[pc];
+    group.appendChild(cluster); group.appendChild(lbl);
+    noteGroupsEl.appendChild(group);
   }
 
   function resizeCanvas(){
