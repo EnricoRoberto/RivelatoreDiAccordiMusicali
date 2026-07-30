@@ -328,13 +328,14 @@
   const FFT_SIZE = 32768;        // risoluzione fine, necessaria per distinguere semitoni nelle ottave basse
   const NOTE_MIN_MIDI = 40;      // Mi2 (~82.4 Hz) — nota più bassa rilevata
   const NOTE_COUNT = 36;         // 3 ottave × 12 semitoni = Mi2 … Re♯5
-  const HARMONIC_WEIGHTS = [1, 0.7, 0.5, 0.3]; // peso di fondamentale, 2ª, 3ª, 4ª armonica
   const NOISE_MIN_FREQ = 55, NOISE_MAX_FREQ = 5000; // banda larga usata solo per il controllo rumore/silenzio
   const CAPTURE_HOP_MS = 40;      // ~25 fps sampling while capturing
   const MAX_HOLD_MS = 4000;       // safety cap for "tieni premuto"
   const STRONG_MATCH = 0.72;
   const WEAK_MATCH = 0.50;
-  const PEAK_REL_THRESHOLD = 0.25; // soglia relativa (sul picco max) per considerare una nota "presente"
+  const NOTE_NOISE_FACTOR = 4;    // un candidato deve superare 4× il livello di fondo (mediana) per essere considerato una nota
+  const ECHO_TOLERANCE = 1.6;     // deve superare 1.6× l'eco armonica prevista per essere considerato una nota reale indipendente
+  const ECHO_DECAY = {12:0.55, 19:0.4, 24:0.3}; // ottava, ottava+quinta, 2 ottave — decadimento tipico atteso
   const FLATNESS_NOISE_THRESHOLD = 0.55;
   let noiseFloorRMS = 0.012; // default, refined by calibration
   function updateNoiseFloorDisplay(){ noiseFloorDisplay.textContent = noiseFloorRMS.toFixed(4); }
@@ -445,56 +446,65 @@
   }
 
   // ================= DSP HELPERS =================
-  // Forza (salienza) di ciascuna delle 36 note (3 ottave) sommando, per ognuna,
-  // il picco locale alla fondamentale + picchi alle prime 3 armoniche (pesati).
-  // Questo è molto più preciso di una somma grezza di bin FFT per pitch-class:
-  // il rumore a banda larga non produce picchi coerenti a fondamentale+armoniche,
-  // mentre una vera nota sì — quindi note reali emergono nettamente dal rumore.
+  // Punteggio di ciascuna delle 36 note (3 ottave) = SOLO energia alla propria
+  // fondamentale (nessuna armonica richiesta). Questo evita di penalizzare timbri
+  // con armoniche deboli (molte tastiere/synth producono toni quasi puri) — un
+  // approccio precedente basato su media geometrica con le armoniche impediva
+  // di riconoscere accordi suonati con questi timbri.
   function computeNoteStrengths(fData){
     const strengths=new Array(NOTE_COUNT);
-    const nyquist=sampleRate/2;
     for(let n=0;n<NOTE_COUNT;n++){
       const f0=midiToFreq(NOTE_MIN_MIDI+n);
-      let logSum=0, weightSum=0;
-      for(let h=1; h<=4; h++){
-        const targetF=f0*h;
-        if(targetF>=nyquist) break;
-        const halfWinHz=targetF*(Math.pow(2,1/24)-1); // ± quarto di semitono, tollera piccola stonatura
-        const loBin=Math.max(0, Math.floor((targetF-halfWinHz)/binHz));
-        const hiBin=Math.min(fData.length-1, Math.ceil((targetF+halfWinHz)/binHz));
-        let peakMag=1e-7; // floor minimo per evitare log(0)
-        for(let b=loBin; b<=hiBin; b++){
-          const db=fData[b];
-          if(!isFinite(db)) continue;
-          const mag=Math.pow(10, db/20);
-          if(mag>peakMag) peakMag=mag;
-        }
-        const w=HARMONIC_WEIGHTS[h-1];
-        logSum += w*Math.log(peakMag);
-        weightSum += w;
+      const halfWinHz=f0*(Math.pow(2,1/24)-1); // ± quarto di semitono, tollera piccola stonatura
+      const loBin=Math.max(0, Math.floor((f0-halfWinHz)/binHz));
+      const hiBin=Math.min(fData.length-1, Math.ceil((f0+halfWinHz)/binHz));
+      let peakMag=0;
+      for(let b=loBin; b<=hiBin; b++){
+        const db=fData[b];
+        if(!isFinite(db)) continue;
+        const mag=Math.pow(10, db/20);
+        if(mag>peakMag) peakMag=mag;
       }
-      // media geometrica pesata: se la fondamentale è assente, il punteggio crolla
-      // anche se un'armonica superiore è forte — evita i falsi "un'ottava sotto"
-      strengths[n] = weightSum>0 ? Math.exp(logSum/weightSum) : 0;
+      strengths[n]=peakMag;
     }
     return strengths;
   }
-  // individua le note "presenti" come massimi locali sopra una soglia relativa al picco più forte
+  function median(arr){
+    const s=[...arr].sort((a,b)=>a-b);
+    const m=Math.floor(s.length/2);
+    return s.length%2 ? s[m] : (s[m-1]+s[m])/2;
+  }
+  // individua le note "presenti": massimi locali sopra un multiplo del livello di
+  // fondo (mediana dei 36 slot — non il picco più forte, altrimenti una nota
+  // suonata più piano delle altre verrebbe scartata solo per differenza di volume).
+  // Le armoniche di una nota reale più bassa vengono poi scartate per CONFRONTO
+  // (quanto ci si aspetterebbe da una semplice eco armonica) e non come requisito
+  // assoluto — così una quinta suonata deliberatamente un'ottava sopra la radice
+  // (posizione spettrale identica alla 3ª armonica) viene comunque riconosciuta
+  // se la sua energia supera quanto una semplice eco spiegherebbe.
   function pickDetectedNotes(strengths){
-    const maxS=Math.max(1e-9, ...strengths);
-    const detected=[];
+    const bg=Math.max(1e-9, median(strengths));
+    const raw=[];
     for(let i=0;i<strengths.length;i++){
       const v=strengths[i];
-      if(v<maxS*PEAK_REL_THRESHOLD) continue;
       const prev=i>0?strengths[i-1]:-Infinity;
       const next=i<strengths.length-1?strengths[i+1]:-Infinity;
-      if(v>=prev && v>=next){
-        const midi=NOTE_MIN_MIDI+i;
-        detected.push({ midi, pc:((midi%12)+12)%12, label:noteLabel(midi), strength:v });
+      if(v>=prev && v>=next && v>bg*NOTE_NOISE_FACTOR){
+        raw.push({ idx:i, midi:NOTE_MIN_MIDI+i, strength:v });
       }
     }
-    detected.sort((a,b)=>a.midi-b.midi);
-    return detected;
+    raw.sort((a,b)=>a.midi-b.midi); // dal basso in su: le note più gravi "spiegano" le armoniche di quelle sopra
+    const accepted=[];
+    raw.forEach(cand=>{
+      let isEcho=false;
+      for(const a of accepted){
+        const decay=ECHO_DECAY[cand.midi-a.midi];
+        if(decay!==undefined && cand.strength<=a.strength*decay*ECHO_TOLERANCE){ isEcho=true; break; }
+      }
+      if(!isEcho) accepted.push(cand);
+    });
+    return accepted.map(a=>({ midi:a.midi, pc:((a.midi%12)+12)%12, label:noteLabel(a.midi), strength:a.strength }))
+                   .sort((x,y)=>x.midi-y.midi);
   }
   // ripiega le note rilevate (con ottava) in un vettore a 12 pitch-class per il match dell'accordo
   function foldNotesToChroma(detected){
